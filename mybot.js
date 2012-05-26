@@ -5,16 +5,18 @@ function new_game() {
 }
 
 function make_move() {
+	
 	var startTime = new Date().getTime();
 	
 	var MAX_DEPTH = 5;
 	var PENALTY_DRAW = 0;
-	var TIMEOUT_MSEC = 9800;
+	var TIMEOUT_MSEC = 9975;
 	
 	var PERMUTE = [WEST, NORTH, EAST, SOUTH, TAKE, PASS];
 	
 	var _other = get_board();
 	var map = { w: WIDTH, h: HEIGHT, b: [] };
+	
 	for(var i = 0; i < map.w; i++) {
 		map.b[i] = [];
 		for(var j = 0; j < map.h; j++) {
@@ -133,11 +135,11 @@ function make_move() {
 			stale[i] = false;
 			if(invents[i][0] > invents[i][2] / 2) {
 				stale[i] = true;
-				pp[0]++;
+				pp[0] += 35.0 / (invents[i][0] - invents[i][1]);
 			}
 			else if(invents[i][1] > invents[i][2] / 2) {
 				stale[i] = true;
-				pp[1]++;
+				pp[1] += 35.0 / (invents[i][1] - invents[i][0]);;
 			}
 			else if(invents[i][0] + invents[i][1] == invents[i][2]) stale[i] = true;
 			else {
@@ -145,19 +147,22 @@ function make_move() {
 			}
 		}
 		
-		//console.log("pp1 %d, pp2 %d", pp[0], pp[1], invents[0][0], invents[0][1]);
-		score += (pp[player] - pp[1 - player]) * 25;
+		score += (pp[player] - pp[1 - player]);
 		
 		//hacky rebalancer, move towards clustered regions when we dont know what to do
 		var dd = [0, 0];
 		for(var i = 0; i < map.w; i++) {
 			for(var j = 0; j < map.h; j++) {
 				if(map.b[i][j] >= 0 && !stale[map.b[i][j]]) {
-					dd[0] += Math.sqrt(Math.abs(i - state.positions[0].x) + Math.abs(j - state.positions[0].y));
-					dd[1] += Math.sqrt(Math.abs(i - state.positions[1].x) + Math.abs(j - state.positions[1].y));
+					dd[0] += 1.1 * Math.sqrt(Math.abs(i - state.positions[0].x) + Math.abs(j - state.positions[0].y));
+					dd[1] += 1.1 * Math.sqrt(Math.abs(i - state.positions[1].x) + Math.abs(j - state.positions[1].y));
 				}
 			}
 		}
+		
+		//console.log("pp1 %d, pp2 %d", pp[0], pp[1], invents[0][0], invents[0][1]);
+		//console.log("dd: ", dd[0], dd[1]);
+		//console.log("prescore: ", score);
 		
 		score += dd[1 - player] - dd[player];
 		
@@ -274,7 +279,7 @@ function make_move() {
 }
 
 //TODO: brute force all pairwise paths for low fruit-counts
-//TODO: Killer heuristic
+//TODO: Strange cycle bug (killer misreading?)
 //TODO: Better evaluation (need some played games first)
 //TODO: Optimization
-//TODO: alpha-beta with fruit vertices rather than squares (partial walks included)
+//TODO: alpha-beta with fruit vertices rather than squares for sparse grids (partial walks included)
