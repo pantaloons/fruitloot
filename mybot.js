@@ -37,31 +37,41 @@ function make_move() {
 	var dx = [-1, 0, 1, 0, 0, 0];
 	var dy = [0, -1, 0, 1, 0, 0];
 	
-	function isDraw() {
-		var p1 = 0, p2 = 0, stale = 0;
-		for(var i = 0; i < nfruits; i++) {
-			if(invents[i][0] > invents[i][2] / 2) p1++;
-			else if(invents[i][1] > invents[i][2] / 2) p2++;
-			else if(invents[i][0] + invents[i][1] == invents[i][2]) stale++;
+	var StaleStore = function() {
+		var p1, p2, stale;
+		this.stales = [];
+		
+		this.update = function() {
+			p1 = 0, p2 = 0, stale = 0;
+			for(var i = 0; i < nfruits; i++) {
+				this.stales[i] = false;
+				if(invents[i][0] > invents[i][2] / 2) {
+					p1++;
+					this.stales[i] = true;
+				}
+				else if(invents[i][1] > invents[i][2] / 2) {
+					p2++;
+					this.stales[i] = true;
+				}
+				else if(invents[i][0] + invents[i][1] == invents[i][2]) {
+					stale++;
+					this.stales[i] = true;
+				}
+			}
 		}
-		if(p1 == p2 && p1 + p2 == nfruits - stale) return true;
-		else return false;
-	}
-	
-	function isWin(player) {
-		var p1 = 0, p2 = 0, stale = 0;
-		for(var i = 0; i < nfruits; i++) {
-			if(invents[i][0] > invents[i][2] / 2) p1++;
-			else if(invents[i][1] > invents[i][2] / 2) p2++;
-			else if(invents[i][0] + invents[i][1] == invents[i][2]) stale++;
+		
+		this.isDraw = function() {
+			return (p1 == p2 && p1 + p2 == nfruits - stale);
 		}
-		if(player == 0) return p1 > (nfruits - stale) / 2;
-		else return p2 > (nfruits - stale) / 2;
+		this.isWin = function(player) {
+			if(player == 0) return p1 > (nfruits - stale) / 2;
+			else return p2 > (nfruits - stale) / 2;
+		}
+		this.isLoss = function(player) {
+			return this.isWin(1 - player);
+		}
 	}
-	
-	function isLoss(player) {
-		return isWin(1 - player);
-	}
+	var staleManager = new StaleStore();
 	
 	var Pos = function(x, y) {
 		this.x = x;
@@ -83,6 +93,7 @@ function make_move() {
 	var State = function() {
 		this.positions = [];
 		this.moves = [];
+		this.targets = [];
 		
 		var fruitCache = [];
 		var split = false;
@@ -91,6 +102,8 @@ function make_move() {
 			var x = new State();
 			x.positions = [this.positions[0].clone(), this.positions[1].clone()];
 			x.moves = [this.moves[0], this.moves[1]];
+			if(this.targets[0] != undefined) x.targets[0] = this.targets[0].clone();
+			if(this.targets[1] != undefined) x.targets[0] = this.targets[1].clone();
 			return x;
 		}
 		
@@ -129,52 +142,7 @@ function make_move() {
 		}
 	}
 	
-	function bruteforce(state, player) {
-		var poss = [];
-		for(var i = 0; i < map.w; i++) {
-			for(var j = 0; j < map.h; j++) {
-				if(map.b[i][j] >= 0) poss.push([i, j, map.b[i][j]]);
-			}
-		}
-		var pp = new Array(poss.length);
-		for(var i = 1; i <= poss.length; i++) perm[i] = i;
-		
-		function perm(k, action) {
-			function swap(i, j) {
-				var t = pp[i];
-				pp[i] = pp[j];
-				pp[j] = t;
-			}
-			function minimum(k) {
-				var j = 0, t = 99999;
-				for(var i = k; i <= n; i++) {
-					if(pp[i] < temp && pp[i] > pp[k - 1]) {
-						temp = pp[i];
-						j = i;
-					}
-				}
-				return j;
-			}
-			function reverse(k) {
-				for(var i = k; i <= (k + poss.length - 1) / 2; i++) swap(i, poss.length - i + k);
-			}
-			if(k <= poss.length - 1) {
-				for(var i = k; i <= poss.length; i++) {
-					perm(k + 1);
-					if(i != poss.length) {
-						reverse(k + 1);
-						var j = minimum(k + 1);
-						swap(k, j);
-						action(poss, pp);
-					}
-				}
-			}
-		}
-		
-		action(poss, pp);
-		perm(1);
-		action(poss, pp);
-	}
+	
 
 	function evaluate(state, player) {
 		var score = 0;
@@ -237,20 +205,124 @@ function make_move() {
 		else if(bj < state.positions[player].y) return 1;
 		else return 3;
 	}
+	
+	function fullSearch(state) {
+		var cfruits = [];
+		for(var i = 0; i < map.w; i++) {
+			for(var j = 0; j < map.h; j++) {
+				if(map.b[i][j] >= 0 && !staleManager.stales[map.b[i][j]]) {
+					cfruits.push({x: i, y: j});
+				}
+			}
+		}
+		var mm = -1;
+		var next = state.clone();
+		for(var i = 0; i < cfruits.length; i++) {
+			if(cfruits[i].x == next.targets[0].x && cfruits[i].y == next.targets[0].y) continue;
+			if(cfruits[i].x == next.targets[1].x && cfruits[i].y == next.targets[1].y) continue;
+			for(var j = 0; j < cfruits.length; j++) {
+				if(cfruits[j].x == next.targets[0].x && cfruits[j].y == next.targets[0].y) continue;
+				if(cfruits[j].x == next.targets[1].x && cfruits[j].y == next.targets[1].y) continue;
+				next.targets[0] = cfruits[i];
+				next.targets[1] = cfruits[j];
+				var res = inFullSearch(next);
+				if(res == 1) return 1;
+				else mm = Math.max(mm, res);
+			}
+		}
+		return mm;
+		
+		var inFullSearch = function(state) {
+			staleManager.update();
+			if(staleManager.isDraw()) return 0;
+			else if(staleManager.isWin(0)) return 1;
+			else if(staleManager.isLoss(0)) return -1;
+			
+			var cfruits = []
+			for(var i = 0; i < map.w; i++) {
+				for(var j = 0; j < map.h; j++) {
+					if(map.b[i][j] >= 0 && !staleManager.stales[map.b[i][j]]) {
+						cfruits.push({x: i, y: j});
+					}
+				}
+			}
+			
+			var cur = state.clone();
+			while((cur.targets[0].x != cur.positions[0].x || cur.targets[0].y != cur.positions[0].y) &&
+					(cur.targets[1].x != cur.positions[1].x || cur.targets[1].y != cur.positions[1].y)) {
+				cur.positions[0].move(navigate(0, cur));
+				cur.positions[1].move(navigate(1, cur));
+			}
+			var mm = -1;
+			if(cur.targets[0].x == cur.positions[0].x && cur.targets[0].y == cur.positions[0].y &&
+				cur.targets[1].x == cur.positions[1].x && cur.targets[1].y == cur.positions[1].y) {
+				var next = cur.clone();
+				next.moves[0] = 4;
+				next.moves[1] = 4;
+				next.do();
+				for(var i = 0; i < cfruits.length; i++) {
+					if(cfruits[i].x == cur.targets[0].x && cfruits[i].y == cur.targets[0].y) continue;
+					if(cfruits[i].x == cur.targets[1].x && cfruits[i].y == cur.targets[1].y) continue;
+					for(var j = 0; j < cfruits.length; j++) {
+						if(cfruits[j].x == cur.targets[0].x && cfruits[j].y == cur.targets[0].y) continue;
+						if(cfruits[j].x == cur.targets[1].x && cfruits[j].y == cur.targets[1].y) continue;
+						next.targets[0] = cfruits[i];
+						next.targets[1] = cfruits[j];
+						var res = inFullSearch(next);
+						if(res == 1) return 1;
+						else mm = Math.max(mm, res);
+					}
+				}
+				next.undo();
+			}
+			else if(cur.targets[0].x == cur.positions[0].x && cur.targets[0].y == cur.positions[0].y) {
+				var next = cur.clone();
+				if(map.b[cur.targets[0].x][cur.targets[0].y] >= 0) next.moves[0] = 4;
+				else next.moves[0] = 5; //hackish, really they shouldn't stop here
+				next.moves[1] = navigate(1, cur);
+				next.do();
+				for(var i = 0; i < cfruits.length; i++) {
+					if(cfruits[i].x == cur.targets[0].x && cfruits[i].y == cur.targets[0].y) continue;
+					next.targets[0] = cfruits[i];
+					var res = inFullSearch(next);
+					if(res == 1) return 1;
+					else mm = Math.max(mm, res);
+				}
+				next.undo();
+			}
+			else if(cur.targets[1].x == cur.positions[1].x && cur.targets[1].y == cur.positions[1].y) {
+				if(cfruits[i].x == cur.targets[1].x && cfruits[i].y == cur.targets[1].y) continue;
+				var next = cur.clone();
+				if(map.b[cur.targets[1].x][cur.targets[1].y] >= 0) next.moves[1] = 4;
+				else next.moves[1] = 5; //hackish again, really they shouldn't stop here
+				next.moves[0] = navigate(1, cur);
+				next.do();
+				for(var i = 0; i < cfruits.length; i++) {
+					next.targets[1] = cfruits[i];
+					var res = inFullSearch(next);
+					if(res == 1) return 1;
+					else mm = Math.max(mm, res);
+				}
+				next.undo();
+			}
+			return mm;
+		}
+	}
 
 	function minimax(state, player, alpha, beta, depth) {
 		path[depth] = 5;
 		
-		if(isDraw()) {
+		staleManager.update();
+		if(staleManager.isDraw()) {
 			path[depth] = getClosest(state, player); 
 			return PENALTY_DRAW;
 		}
-		else if(isWin(player)) {
+		else if(staleManager.isWin(player)) {
 			path[depth] = getClosest(state, player);
 			//if(depth == 0) console.log("won", path[depth]);
 			return Number.MAX_VALUE;
 		}
-		else if(isLoss(player)) {
+		else if(staleManager.isLoss(player)) {
 			path[depth] = PASS; //maybe we can get a stalemate if they loop
 			return -Number.MAX_VALUE;
 		}
