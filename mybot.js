@@ -234,7 +234,7 @@ function make_move() {
 			var nAlpha = -minimax(next, 1 - player, -beta, -alpha, depth + 1);
 			alphas[i] = nAlpha;
 			//console.log(depth + " pos " + i + " nalpha is " + nAlpha + " aa: " + alpha);
-			if(nAlpha > alpha) {
+			if(nAlpha > alpha || (Math.abs(nAlpha - alpha) < 1e-6 && i == 4)) {
 				alpha = nAlpha;
 				newPath[0] = i;
 				for(var j = depth + 1; j < MAX_DEPTH; j++) newPath[j - depth] = path[j];
@@ -249,8 +249,8 @@ function make_move() {
 			if(alpha >= beta) break;
 		}
 		
-		//console.log("minimax(dep=%d [%d %d %d] [%d %d %d] %d %d) -- bestMove " + alphas, depth, state.positions[0].x, state.positions[0].y, state.moves[0],
-		//		state.positions[1].x, state.positions[1].y, state.moves[1], alpha, beta, newPath[0]);
+		console.log("minimax(dep=%d [%d %d %d] [%d %d %d] %d %d) -- bestMove " + alphas, depth, state.positions[0].x, state.positions[0].y, state.moves[0],
+				state.positions[1].x, state.positions[1].y, state.moves[1], alpha, beta, newPath[0]);
 		
 		for(var i = depth; i < MAX_DEPTH; i++) path[i] = newPath[i - depth];
 		//console.log(" got ppath: " + path.slice(depth, -1));
@@ -261,7 +261,7 @@ function make_move() {
 	initial.positions[0] = new Pos(get_my_x(), get_my_y());
 	initial.positions[1] = new Pos(get_opponent_x(), get_opponent_y());
 	var lastMove = 0;
-	for(var i = 1; i < 100 && !(new Date().getTime() - startTime > TIMEOUT_MSEC); i++) {
+	for(var i = 1; i < 4 && !(new Date().getTime() - startTime > TIMEOUT_MSEC); i++) {
 		MAX_DEPTH = i;
 		//console.log("depth: ", i);
 		var res = minimax(initial, 0, -Number.MAX_VALUE, Number.MAX_VALUE, 0);
@@ -281,5 +281,6 @@ function make_move() {
 //TODO: brute force all pairwise paths for low fruit-counts
 //TODO: Strange cycle bug (killer misreading?)
 //TODO: Better evaluation (need some played games first)
+//TODO: Win detection for drawn but not yet fully eaten fruits
 //TODO: Optimization
 //TODO: alpha-beta with fruit vertices rather than squares for sparse grids (partial walks included)
