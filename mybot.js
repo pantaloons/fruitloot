@@ -40,9 +40,10 @@ function make_move() {
 	var StaleStore = function() {
 		var p1, p2, stale;
 		this.stales = [];
+		this.freshCount = 0;
 		
 		this.update = function() {
-			p1 = 0, p2 = 0, stale = 0;
+			p1 = 0, p2 = 0, stale = 0, this.freshCount = 0;
 			for(var i = 0; i < nfruits; i++) {
 				this.stales[i] = false;
 				if(invents[i][0] > invents[i][2] / 2) {
@@ -57,6 +58,7 @@ function make_move() {
 					stale++;
 					this.stales[i] = true;
 				}
+				if(!this.stales[i]) this.freshCount += invents[i][2] - invents[i][0] - invents[i][1];
 			}
 		}
 		
@@ -102,8 +104,8 @@ function make_move() {
 			var x = new State();
 			x.positions = [this.positions[0].clone(), this.positions[1].clone()];
 			x.moves = [this.moves[0], this.moves[1]];
-			if(this.targets[0] != undefined) x.targets[0] = this.targets[0].clone();
-			if(this.targets[1] != undefined) x.targets[0] = this.targets[1].clone();
+			if(this.targets[0] != undefined) x.targets[0] = {x: this.targets[0].x, y: this.targets[0].y};
+			if(this.targets[1] != undefined) x.targets[1] = {x: this.targets[1].x, y: this.targets[1].y};
 			return x;
 		}
 		
@@ -177,9 +179,9 @@ function make_move() {
 			}
 		}
 		
-		console.log("pp1 %d, pp2 %d", pp[0], pp[1], invents[0][0], invents[0][1]);
-		console.log("dd: ", dd[0], dd[1]);
-		console.log("prescore: ", score);
+		//console.log("pp1 %d, pp2 %d", pp[0], pp[1], invents[0][0], invents[0][1]);
+		//console.log("dd: ", dd[0], dd[1]);
+		//console.log("prescore: ", score);
 		
 		score += dd[1 - player] - dd[player];
 		
@@ -198,40 +200,24 @@ function make_move() {
 				}
 			}
 		}
-		if(bi == -1 && bj == -1) return 4;
+		if(bi == -1 && bj == -1) return 5;
 		else if(bi == state.positions[player].x && bj == state.positions[player].y) return 5;
 		else if(bi < state.positions[player].x) return 0;
 		else if(bi > state.positions[player].x) return 2;
-		else if(bj < state.positions[player].y) return 1;
-		else return 3;
+		else if(bj < state.positions[player].y) return 3;
+		else return 1;
 	}
 	
-	function fullSearch(state) {
-		var cfruits = [];
-		for(var i = 0; i < map.w; i++) {
-			for(var j = 0; j < map.h; j++) {
-				if(map.b[i][j] >= 0 && !staleManager.stales[map.b[i][j]]) {
-					cfruits.push({x: i, y: j});
-				}
-			}
-		}
-		var mm = -1;
-		var next = state.clone();
-		for(var i = 0; i < cfruits.length; i++) {
-			if(cfruits[i].x == next.targets[0].x && cfruits[i].y == next.targets[0].y) continue;
-			if(cfruits[i].x == next.targets[1].x && cfruits[i].y == next.targets[1].y) continue;
-			for(var j = 0; j < cfruits.length; j++) {
-				if(cfruits[j].x == next.targets[0].x && cfruits[j].y == next.targets[0].y) continue;
-				if(cfruits[j].x == next.targets[1].x && cfruits[j].y == next.targets[1].y) continue;
-				next.targets[0] = cfruits[i];
-				next.targets[1] = cfruits[j];
-				var res = inFullSearch(next);
-				if(res == 1) return 1;
-				else mm = Math.max(mm, res);
-			}
-		}
-		return mm;
-		
+	function navigate(player, state) {
+		if(state.positions[player].x == state.targets[player].x && state.positions[player].y == state.targets[player].y) return 4;
+		else if(state.positions[player].x > state.targets[player].x) return 0;
+		else if(state.positions[player].x < state.targets[player].x) return 2;
+		else if(state.positions[player].y > state.targets[player].y) return 1;
+		else if(state.positions[player].y < state.targets[player].y) return 3;
+		else return 5; //should be impossible
+	}
+	
+	function fullSearch(state, depth, player) {		
 		var inFullSearch = function(state) {
 			staleManager.update();
 			if(staleManager.isDraw()) return 0;
@@ -250,20 +236,22 @@ function make_move() {
 			var cur = state.clone();
 			while((cur.targets[0].x != cur.positions[0].x || cur.targets[0].y != cur.positions[0].y) &&
 					(cur.targets[1].x != cur.positions[1].x || cur.targets[1].y != cur.positions[1].y)) {
-				cur.positions[0].move(navigate(0, cur));
-				cur.positions[1].move(navigate(1, cur));
+				cur.positions[0] = cur.positions[0].move(navigate(0, cur));
+				cur.positions[1] = cur.positions[1].move(navigate(1, cur));
 			}
 			var mm = -1;
 			if(cur.targets[0].x == cur.positions[0].x && cur.targets[0].y == cur.positions[0].y &&
 				cur.targets[1].x == cur.positions[1].x && cur.targets[1].y == cur.positions[1].y) {
 				var next = cur.clone();
-				next.moves[0] = 4;
-				next.moves[1] = 4;
+				if(map.b[next.targets[0].x][next.targets[0].y] >= 0) next.moves[0] = 4;
+				else next.moves[0] = 5;
+				if(map.b[next.targets[1].x][next.targets[1].y] >= 0) next.moves[1] = 4;
+				else next.moves[1] = 5;
 				next.do();
 				for(var i = 0; i < cfruits.length; i++) {
 					if(cfruits[i].x == cur.targets[0].x && cfruits[i].y == cur.targets[0].y) continue;
 					if(cfruits[i].x == cur.targets[1].x && cfruits[i].y == cur.targets[1].y) continue;
-					for(var j = 0; j < cfruits.length; j++) {
+					for(var j = 0; j < cfruits.length && !(new Date().getTime() - startTime > TIMEOUT_MSEC); j++) {
 						if(cfruits[j].x == cur.targets[0].x && cfruits[j].y == cur.targets[0].y) continue;
 						if(cfruits[j].x == cur.targets[1].x && cfruits[j].y == cur.targets[1].y) continue;
 						next.targets[0] = cfruits[i];
@@ -271,6 +259,11 @@ function make_move() {
 						var res = inFullSearch(next);
 						if(res == 1) return 1;
 						else mm = Math.max(mm, res);
+						
+						if(new Date().getTime() - startTime > TIMEOUT_MSEC) {
+							next.undo();
+							return -1;
+						}
 					}
 				}
 				next.undo();
@@ -281,32 +274,71 @@ function make_move() {
 				else next.moves[0] = 5; //hackish, really they shouldn't stop here
 				next.moves[1] = navigate(1, cur);
 				next.do();
-				for(var i = 0; i < cfruits.length; i++) {
+				for(var i = 0; i < cfruits.length && !(new Date().getTime() - startTime > TIMEOUT_MSEC); i++) {
 					if(cfruits[i].x == cur.targets[0].x && cfruits[i].y == cur.targets[0].y) continue;
 					next.targets[0] = cfruits[i];
 					var res = inFullSearch(next);
 					if(res == 1) return 1;
 					else mm = Math.max(mm, res);
+					
+					if(new Date().getTime() - startTime > TIMEOUT_MSEC) {
+						next.undo();
+						return -1;
+					}
 				}
 				next.undo();
 			}
 			else if(cur.targets[1].x == cur.positions[1].x && cur.targets[1].y == cur.positions[1].y) {
-				if(cfruits[i].x == cur.targets[1].x && cfruits[i].y == cur.targets[1].y) continue;
 				var next = cur.clone();
 				if(map.b[cur.targets[1].x][cur.targets[1].y] >= 0) next.moves[1] = 4;
 				else next.moves[1] = 5; //hackish again, really they shouldn't stop here
-				next.moves[0] = navigate(1, cur);
+				next.moves[0] = navigate(0, cur);
 				next.do();
-				for(var i = 0; i < cfruits.length; i++) {
+				for(var i = 0; i < cfruits.length && !(new Date().getTime() - startTime > TIMEOUT_MSEC); i++) {
+					if(cfruits[i].x == cur.targets[1].x && cfruits[i].y == cur.targets[1].y) continue;
 					next.targets[1] = cfruits[i];
 					var res = inFullSearch(next);
 					if(res == 1) return 1;
 					else mm = Math.max(mm, res);
+					
+					if(new Date().getTime() - startTime > TIMEOUT_MSEC) {
+						next.undo();
+						return -1;
+					}
 				}
 				next.undo();
 			}
 			return mm;
 		}
+		
+		var cfruits = [];
+		for(var i = 0; i < map.w; i++) {
+			for(var j = 0; j < map.h; j++) {
+				if(map.b[i][j] >= 0 && !staleManager.stales[map.b[i][j]]) {
+					cfruits.push({x: i, y: j});
+				}
+			}
+		}
+		path[depth] = 5;
+		var mm = -1;
+		var next = state.clone();
+		for(var i = 0; i < cfruits.length; i++) {
+			for(var j = 0; j < cfruits.length && !(new Date().getTime() - startTime > TIMEOUT_MSEC); j++) {
+				next.targets[0] = cfruits[i];
+				next.targets[1] = cfruits[j];
+				var res = inFullSearch(next);
+				if(res == 1) {
+					path[depth] = navigate(player, next);
+					return 1;
+				}
+				else if(res > mm) {
+					path[depth] = navigate(player, next);
+					mm = Math.max(mm, res);
+				}
+				if(new Date().getTime() - startTime > TIMEOUT_MSEC) return -1;
+			}
+		}
+		return mm;
 	}
 
 	function minimax(state, player, alpha, beta, depth) {
@@ -325,6 +357,13 @@ function make_move() {
 		else if(staleManager.isLoss(player)) {
 			path[depth] = PASS; //maybe we can get a stalemate if they loop
 			return -Number.MAX_VALUE;
+		}
+		
+		if(staleManager.freshCount <= 5) {
+			var ans = fullSearch(state, depth, player);
+			if(ans == 1) return Number.MAX_VALUE;
+			else if(ans == -1) return -Number.MAX_VALUE;
+			else return 0;
 		}
 		
 		if(depth >= 2 * MAX_DEPTH) return evaluate(state, player);
@@ -370,8 +409,8 @@ function make_move() {
 			if(alpha >= beta) break;
 		}
 		
-		console.log("minimax(dep=%d [%d %d %d] [%d %d %d] %d %d) -- bestMove " + alphas, depth, state.positions[0].x, state.positions[0].y, state.moves[0],
-				state.positions[1].x, state.positions[1].y, state.moves[1], alpha, beta, newPath[0]);
+		//console.log("minimax(dep=%d [%d %d %d] [%d %d %d] %d %d) -- bestMove " + alphas, depth, state.positions[0].x, state.positions[0].y, state.moves[0],
+		//		state.positions[1].x, state.positions[1].y, state.moves[1], alpha, beta, newPath[0]);
 		
 		for(var i = depth; i < MAX_DEPTH; i++) path[i] = newPath[i - depth];
 		//console.log(" got ppath: " + path.slice(depth, -1));
