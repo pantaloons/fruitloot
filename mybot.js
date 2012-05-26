@@ -24,10 +24,12 @@ function make_move() {
 		}
 	}
 	
+	var cfruits = 0;
 	var nfruits = get_number_of_item_types();
 	var invents = [];
 	for(var i = 0; i < nfruits; i++) {
 		invents[i] = [get_my_item_count(i+1), get_opponent_item_count(i+1), get_total_item_count(i+1)];
+		cfruits += invents[i][2];
 	}
 	
 	var path = [];
@@ -126,6 +128,53 @@ function make_move() {
 			}
 		}
 	}
+	
+	function bruteforce(state, player) {
+		var poss = [];
+		for(var i = 0; i < map.w; i++) {
+			for(var j = 0; j < map.h; j++) {
+				if(map.b[i][j] >= 0) poss.push([i, j, map.b[i][j]]);
+			}
+		}
+		var pp = new Array(poss.length);
+		for(var i = 1; i <= poss.length; i++) perm[i] = i;
+		
+		function perm(k, action) {
+			function swap(i, j) {
+				var t = pp[i];
+				pp[i] = pp[j];
+				pp[j] = t;
+			}
+			function minimum(k) {
+				var j = 0, t = 99999;
+				for(var i = k; i <= n; i++) {
+					if(pp[i] < temp && pp[i] > pp[k - 1]) {
+						temp = pp[i];
+						j = i;
+					}
+				}
+				return j;
+			}
+			function reverse(k) {
+				for(var i = k; i <= (k + poss.length - 1) / 2; i++) swap(i, poss.length - i + k);
+			}
+			if(k <= poss.length - 1) {
+				for(var i = k; i <= poss.length; i++) {
+					perm(k + 1);
+					if(i != poss.length) {
+						reverse(k + 1);
+						var j = minimum(k + 1);
+						swap(k, j);
+						action(poss, pp);
+					}
+				}
+			}
+		}
+		
+		action(poss, pp);
+		perm(1);
+		action(poss, pp);
+	}
 
 	function evaluate(state, player) {
 		var score = 0;
@@ -135,11 +184,11 @@ function make_move() {
 			stale[i] = false;
 			if(invents[i][0] > invents[i][2] / 2) {
 				stale[i] = true;
-				pp[0] += 35.0 / (invents[i][0] - invents[i][1]);
+				pp[0]++;
 			}
 			else if(invents[i][1] > invents[i][2] / 2) {
 				stale[i] = true;
-				pp[1] += 35.0 / (invents[i][1] - invents[i][0]);;
+				pp[1]++;
 			}
 			else if(invents[i][0] + invents[i][1] == invents[i][2]) stale[i] = true;
 			else {
@@ -147,7 +196,7 @@ function make_move() {
 			}
 		}
 		
-		score += (pp[player] - pp[1 - player]);
+		score += (pp[player] - pp[1 - player]) * 25;
 		
 		//hacky rebalancer, move towards clustered regions when we dont know what to do
 		var dd = [0, 0];
@@ -160,9 +209,9 @@ function make_move() {
 			}
 		}
 		
-		//console.log("pp1 %d, pp2 %d", pp[0], pp[1], invents[0][0], invents[0][1]);
-		//console.log("dd: ", dd[0], dd[1]);
-		//console.log("prescore: ", score);
+		console.log("pp1 %d, pp2 %d", pp[0], pp[1], invents[0][0], invents[0][1]);
+		console.log("dd: ", dd[0], dd[1]);
+		console.log("prescore: ", score);
 		
 		score += dd[1 - player] - dd[player];
 		
