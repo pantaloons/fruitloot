@@ -1,66 +1,74 @@
-var killPath = [];
-var dbg = 0;
+var retain = [];
 
 function new_game() {
-	for(var i = 0; i < 202; i++) killPath[i] = 4; //killpath take..take..take as best initial guess
 }
 
 function make_move() {
-	dbg = 0;
-
 	var startTime = new Date().getTime();
-	
-	var MIN_DEPTH = 5;
-	var MAX_DEPTH = 100;
-	var PENALTY_DRAW = 0;
-	var TIMEOUT_MSEC = 29750;
-	
-	var PERMUTE = [WEST, NORTH, EAST, SOUTH, TAKE, PASS];
-	
-	var curDepth;
-	
-	var _other = get_board();
-	var map = { w: WIDTH, h: HEIGHT, b: [] };
-	for(var i = 0; i < map.w; i++) {
-		map.b[i] = [];
-		for(var j = 0; j < map.h; j++) {
-			map.b[i][j] = _other[i][j] - 1;
-		}
-	}
-	
-	var nfruits = get_number_of_item_types();
-	var invents = [];
-	for(var i = 0; i < nfruits; i++) {
-		invents[i] = [get_my_item_count(i+1), get_opponent_item_count(i+1), get_total_item_count(i+1)];
-	}
-	
-	var path = [];
 	
 	var dx = [-1, 0, 1, 0, 0, 0];
 	var dy = [0, -1, 0, 1, 0, 0];
+	var MIN_DEPTH = 1;
+	var MAX_DEPTH = 100;
+	var PENALTY_DRAW = 0;
+	var TIMEOUT_MSEC = 9720;
+	
+	var PERMUTE = [WEST, NORTH, EAST, SOUTH, TAKE, PASS];
+	
+	var killer = [];
+	var guessed = false;
+	var map = { w: WIDTH, h: HEIGHT, fruits: [], invents: [] };
+	(function() {
+		var board = [];
+		var other = get_board();
+		for(var i = 0; i < map.w; i++) {
+			board[i] = [];
+			for(var j = 0; j < map.h; j++) {
+				board[i][j] = undefined;
+				if(other[i][j] > 0) {
+					board[i][j] = map.fruits.length;
+					map.fruits.push({taken: false, x: i, y: j, type: other[i][j] - 1});
+				}
+			}
+		}
+		map.fruits.sort(function(a, b) {
+			return a.type - b.type;
+		});
+		
+		var nfruits = get_number_of_item_types();
+		for(var i = 0; i < nfruits; i++) {
+			map.invents.push([get_my_item_count(i+1), get_opponent_item_count(i+1), get_total_item_count(i+1)]);
+		}
+		
+		for(var i = 0; i < retain.length; i++) killer[i] = board[retain[i].x][retain[i].y];
+	}());
 	
 	var StaleStore = function() {
 		var stale, hasHalf, won;
 		
 		this.update = function() {
 			hasHalf = [0, 0];
+			isHalf = [0, 0];
 			won = [0, 0];
-			for(var i = 0; i < nfruits; i++) {
-				if(invents[i][0] >= invents[i][2] / 2) {
-					if(invents[i][0] > invents[i][2] / 2) won[0]++;
+			for(var i = 0; i < map.invents.length; i++) {
+				if(map.invents[i][0] >= map.invents[i][2] / 2) {
+					if(map.invents[i][0] == map.invents[i][2] / 2) isHalf[0]++;
+					if(map.invents[i][0] > map.invents[i][2] / 2) won[0]++;
 					hasHalf[0]++;
 				}
-				if(invents[i][1] >= invents[i][2] / 2) {
-					if(invents[i][1] > invents[i][2] / 2) won[1]++;
+				if(map.invents[i][1] >= map.invents[i][2] / 2) {
+					if(map.invents[i][1] == map.invents[i][2] / 2) isHalf[1]++;
+					if(map.invents[i][1] > map.invents[i][2] / 2) won[1]++;
 					hasHalf[1]++;
 				}
 			}
 		}
 		
 		this.canWin = function(player) {
-			var avail = nfruits - hasHalf[1 - player];
-			if(avail <= nfruits / 2) return false;
-			return true;
+			var winnable = map.invents.length - hasHalf[1 - player];
+			var tieable = isHalf[1 - player];
+			
+			return winnable > (map.invents.length - tieable) / 2;
 		}
 		
 		this.isDraw = function() {
@@ -68,7 +76,7 @@ function make_move() {
 		}
 		
 		this.isWin = function(player) {
-			if(won[player] > nfruits - hasHalf[player]) return true;
+			if(won[player] > map.invents.length - hasHalf[player]) return true;
 			return false;
 		}
 		
@@ -78,231 +86,218 @@ function make_move() {
 	}
 	var staleManager = new StaleStore();
 	
-	var Pos = function(x, y) {
-		this.x = x;
-		this.y = y;
-		
-		this.move = function(dir) {
-			return new Pos(x + dx[dir], y + dy[dir]);
-		}
-		
-		this.unmove = function(dir) {
-			return new Pos(x - dx[dir], y - dy[dir]);
-		}
-		
-		this.clone = function() {
-			return new Pos(x, y);
-		}
-	}
-
 	var State = function() {
-		this.positions = [];
-		this.moves = [];
+		this.targets = [-1, -1];
+		this.pos = [{x: -1, y: -1}, {x: -1, y: -1}];
 		
-		var fruitCache = [];
-		var split = false;
-		
-		this.clone = function() {
-			var x = new State();
-			x.positions = [this.positions[0].clone(), this.positions[1].clone()];
-			x.moves = [this.moves[0], this.moves[1]];
-			return x;
-		}
-		
-		this.do = function() {
-			for(var i = 0; i < 2; i++) fruitCache[i] = map.b[this.positions[i].x][this.positions[i].y];
-			if((this.positions[0].x == this.positions[1].x) && (this.positions[0].y == this.positions[0].y) &&
-					(this.moves[0] == 4 && this.moves[1] == 4)) {
-				split = true;
-				invents[fruitCache[0]][2]--; // Global inventory drop
-				map.b[this.positions[0].x][this.positions[0].y] = -1;
-				return;
-			}
+		this.nextstate = function() {
+			var dists = [
+				Math.abs(this.pos[0].x - map.fruits[this.targets[0]].x) + Math.abs(this.pos[0].y - map.fruits[this.targets[0]].y),
+				Math.abs(this.pos[1].x - map.fruits[this.targets[1]].x) + Math.abs(this.pos[1].y - map.fruits[this.targets[1]].y)
+			];
+			var next = new State();
 			for(var i = 0; i < 2; i++) {
-				if(this.moves[i] == 4) {
-					invents[fruitCache[i]][i]++;
-					map.b[this.positions[i].x][this.positions[i].y] = -1;
+				if(dists[i] > dists[1 - i]) {
+					next.targets[i] = this.targets[i];
+					/* Be super careful the 1, it adjusts fully for time to take fruit. */
+					var steps = dists[1 - i] + 1;
+					var xdir = this.pos[i].x < map.fruits[this.targets[i]].x ? 1 : -1;
+					var ydir = this.pos[i].y < map.fruits[this.targets[i]].y ? 1 : -1;
+					var distx = Math.abs(this.pos[i].x - map.fruits[this.targets[i]].x);
+					var disty = Math.abs(this.pos[i].y - map.fruits[this.targets[i]].y);
+					if(steps >= distx) {
+						steps -= distx;
+						next.pos[i] = {x: map.fruits[this.targets[i]].x, y: this.pos[i].y + steps * ydir};
+					}
+					else {
+						next.pos[i] = {x: this.pos[i].x + steps * xdir, y: this.pos[i].y};
+					}
+				}
+				else {
+					next.pos[i] = {x: map.fruits[this.targets[i]].x, y: map.fruits[this.targets[i]].y};
 				}
 			}
-			this.positions[0] = this.positions[0].move(this.moves[0]);
-			this.positions[1] = this.positions[1].move(this.moves[1]);
+			return next;
 		}
-		
-		this.undo = function() {
-			this.positions[0] = this.positions[0].unmove(this.moves[0]);
-			this.positions[1] = this.positions[1].unmove(this.moves[1]);
-			if(split) {
-				invents[fruitCache[0]][2]++; //inventory restore
-				map.b[this.positions[0].x][this.positions[0].y] = fruitCache[0];
+		var took = [false, false];
+		this.domap = function() {
+			var dists = [
+				Math.abs(this.pos[0].x - map.fruits[this.targets[0]].x) + Math.abs(this.pos[0].y - map.fruits[this.targets[0]].y),
+				Math.abs(this.pos[1].x - map.fruits[this.targets[1]].x) + Math.abs(this.pos[1].y - map.fruits[this.targets[1]].y)
+			];
+			if(dists[0] == dists[1] && this.targets[0] == this.targets[1]) {
+				map.fruits[this.targets[0]].taken = true;
+				map.invents[map.fruits[this.targets[0]].type][2]--;
+				return;
 			}
 			else {
 				for(var i = 0; i < 2; i++) {
-					if(this.moves[i] == 4) invents[fruitCache[i]][i]--;
-					map.b[this.positions[i].x][this.positions[i].y] = fruitCache[i];
+					if(dists[i] <= dists[1 - i] && !map.fruits[this.targets[i]].taken) {
+						map.fruits[this.targets[i]].taken = true;
+						map.invents[map.fruits[this.targets[i]].type][i]++;
+						took[i] = true;
+					}
+				}
+			}
+		}
+		this.undomap = function() {
+			var dists = [
+				Math.abs(this.pos[0].x - map.fruits[this.targets[0]].x) + Math.abs(this.pos[0].y - map.fruits[this.targets[0]].y),
+				Math.abs(this.pos[1].x - map.fruits[this.targets[1]].x) + Math.abs(this.pos[1].y - map.fruits[this.targets[1]].y)
+			];
+			if(dists[0] == dists[1] && this.targets[0] == this.targets[1]) {
+				map.fruits[this.targets[0]].taken = false;
+				map.invents[map.fruits[this.targets[0]].type][2]++;
+			}
+			else {
+				for(var i = 0; i < 2; i++) {
+					if(dists[i] <= dists[1 - i] && took[i]) {
+						map.fruits[this.targets[i]].taken = false;
+						map.invents[map.fruits[this.targets[i]].type][i]--;
+					}
 				}
 			}
 		}
 	}
 
 	function evaluate(state, player) {
+		guessed = true;
 		var score = 0;
 		
 		var pp = [0, 0], stale = [];
-		for(var i = 0; i < nfruits; i++) {
+		for(var i = 0; i < map.invents.length; i++) {
 			stale[i] = false;
-			if(invents[i][0] > invents[i][2] / 2) {
+			if(map.invents[i][0] > map.invents[i][2] / 2) {
 				stale[i] = true;
 				pp[0]++;
 			}
-			else if(invents[i][1] > invents[i][2] / 2) {
+			else if(map.invents[i][1] > map.invents[i][2] / 2) {
 				stale[i] = true;
 				pp[1]++;
 			}
-			else if(invents[i][0] + invents[i][1] == invents[i][2]) stale[i] = true;
+			else if(map.invents[i][0] + map.invents[i][1] == map.invents[i][2]) stale[i] = true;
 			else {
-				score += (invents[i][player] - invents[i][1 - player]) * (15.0 / (invents[i][2] - invents[i][0] - invents[i][1]));
+				score += (map.invents[i][player] - map.invents[i][1 - player]) * (15.0 / (map.invents[i][2] - map.invents[i][0] - map.invents[i][1]));
 			}
 		}
 		
-		//console.log("pp1 %d, pp2 %d", pp[0], pp[1], invents[0][0], invents[0][1]);
 		score += (pp[player] - pp[1 - player]) * 25;
 		
-		//hacky rebalancer, move towards clustered regions when we dont know what to do
 		var dd = [0, 0];
-		for(var i = 0; i < map.w; i++) {
-			for(var j = 0; j < map.h; j++) {
-				if(map.b[i][j] >= 0 && !stale[map.b[i][j]]) {
-					dd[0] += Math.sqrt(Math.abs(i - state.positions[0].x) + Math.abs(j - state.positions[0].y));
-					dd[1] += Math.sqrt(Math.abs(i - state.positions[1].x) + Math.abs(j - state.positions[1].y));
-				}
+		for(var i = 0; i < map.fruits.length; i++) {
+			if(!stale[map.fruits[i].type] && !map.fruits[i].taken) {
+				dd[0] += Math.sqrt(Math.abs(map.fruits[i].x - state.pos[0].x) + Math.abs(map.fruits[i].y - state.pos[0].y));
+				dd[1] += Math.sqrt(Math.abs(map.fruits[i].x - state.pos[1].x) + Math.abs(map.fruits[i].y - state.pos[1].y));
 			}
 		}
-		
+				
 		score += dd[1 - player] - dd[player];
 		
 		return score;
 	}
+
+	var curDepth = -1;
 	
-	function getClosest(state, player) {
-		var dist = -1;
-		var bi = -1, bj = -1;
-		for(var i = 0; i < map.w; i++) {
-			for(var j = 0; j < map.h; j++) {
-				if(map.b[i][j] >= 0 && (dist < 0 || Math.abs(i - state.positions[player].x) + Math.abs(j - state.positions[player].y) < dist)) {
-					bi = i;
-					bj = j;
-					dist = Math.abs(i - state.positions[player].x) + Math.abs(j - state.positions[player].y);
+	//TODO: ALSO minimize time to win / draw
+	function minimax(state, player, alpha, beta, depth) {
+		var oldTarget = state.targets[player];
+		var otherTarget = state.targets[1 - player];
+		staleManager.update();
+		if(staleManager.isDraw() || staleManager.isWin(player) || staleManager.isLoss(player)) {
+			var path = [];
+			for(var i = 0; i < map.fruits.length; i++) {
+				if(!map.fruits[i].taken) {
+					path.push(i);
+					break;
 				}
 			}
-		}
-		if(bi == -1 && bj == -1) return 5;
-		else if(bi == state.positions[player].x && bj == state.positions[player].y) return 4;
-		else if(bi < state.positions[player].x) return 0;
-		else if(bi > state.positions[player].x) return 2;
-		else if(bj < state.positions[player].y) return 1;
-		else return 3;
-	}
-
-	function minimax(state, player, alpha, beta, depth) {
-		dbg++;
-		if(dbg == 25169) {
-			//break;
-			var xyz = 2;
-		}
-		path[depth] = 4;
-		
-		staleManager.update();
-		if(staleManager.isDraw()) {
-			path[depth] = getClosest(state, player);
-			//console.log("draw ", depth, path[depth]);
-			return PENALTY_DRAW;
-		}
-		else if(staleManager.isWin(player)) {
-			path[depth] = getClosest(state, player);
-			//console.log("won ", depth, path[depth]);
-			return Number.MAX_VALUE;
-		}
-		else if(staleManager.isLoss(player)) {
-			path[depth] = getClosest(state, player); //maybe we can get a stalemate if they loop
-			return -Number.MAX_VALUE;
+			if(staleManager.isDraw()) return {alpha: PENALTY_DRAW, path: path};
+			else if(staleManager.isWin(player)) return {alpha: Number.MAX_VALUE, path: path};
+			else if(staleManager.isLoss(player)) return {alpha: -Number.MAX_VALUE, path: path};
 		}
 		
-		if(depth >= curDepth) return evaluate(state, player);
+		if(depth >= curDepth) return {alpha: evaluate(state, player), path: [0]};
 		
-		var newPath = [];
-		for(var i = depth; i < curDepth; i++) newPath[i - depth] = 4;
-		
-		var kill = killPath[depth];
-		var alphas = [-33, -33, -33, -33, -33, -33];
-		for(var ii = -1; ii < 6 && !(new Date().getTime() - startTime > TIMEOUT_MSEC); ii++) {
+		var bestPath = [];
+		var kill = killer[depth];
+		for(var ii = -1; ii < map.fruits.length && !(new Date().getTime() - startTime > TIMEOUT_MSEC); ii++) {
+			if(ii == -1 && kill == undefined) continue;
 			var i = ii;
-			if(i == 0) i = 4; //try to take after killer to generate large alpha
-			else if(i == 4) i = 0;
-			if(i == kill) continue;
-			if(i == -1) i = kill; //killer first
+			if(ii == -1) i = kill;
+			else if(ii == kill) continue;
 			
-			var p = state.positions[player].move(i);
-			if(p.x < 0 || p.x >= map.w || p.y < 0 || p.y >= map.h) {
-				//console.log("skipping " + i + ", bounds");
-				continue;
+			if(oldTarget >= 0 && i != oldTarget) continue;
+			if(map.fruits[i].taken && oldTarget < 0) continue;
+			
+			var next = state;
+			next.targets[1 - player] = otherTarget;
+			next.targets[player] = i;
+			if(player == 1) {
+				state.domap();
+				next = state.nextstate();
 			}
-			if(i == 4 && map.b[p.x][p.y] == -1) {
-				//console.log("skipping " + i + ", take");
-				continue;
-			}
-			
-			var next = state.clone();
-			next.moves[player] = i;
-			if(player == 1) next.do();
-			
-			var nAlpha = -minimax(next, 1 - player, -beta, -alpha, depth + 1);
-			alphas[i] = nAlpha;
-			//console.log("pos " + i + " nalpha is " + nAlpha + " aa: " + alpha);
-			if(nAlpha > alpha) {
-				alpha = nAlpha;
-				newPath[0] = i;
-				for(var j = depth + 1; j < curDepth; j++) newPath[j - depth] = path[j];
-				killPath[depth] = i;
-				//console.log(depth + " newpath is " + newPath);
+
+			var res = minimax(next, 1 - player, -beta, -alpha, depth + 1);
+			res.alpha = -res.alpha;
+			if(res.alpha > alpha) {
+				alpha = res.alpha;
+				bestPath = [i];
+				bestPath.push.apply(bestPath, res.path);
+				
+				killer[depth] = i;
 			}
 			
-			if(player == 1) next.undo();
+			if(player == 1) state.undomap();
 			
-			if(new Date().getTime() - startTime > TIMEOUT_MSEC) return -Number.MAX_VALUE;
+			if(new Date().getTime() - startTime > TIMEOUT_MSEC) return {alpha: -Number.MAX_VALUE, path: [0]};
 			
 			if(alpha >= beta) break;
 		}
 		
-		//console.log("minimax(dep=%d [%d %d %d] [%d %d %d] %d %d) " + alphas, depth, state.positions[0].x, state.positions[0].y, state.moves[0],
-		//		state.positions[1].x, state.positions[1].y, state.moves[1], alpha, beta, newPath[0]);
-		
-		for(var i = depth; i < curDepth; i++) path[i] = newPath[i - depth];
-		//console.log(" got ppath: " + path.slice(depth, -1));
-		return alpha;
+		return {alpha: alpha, path: bestPath};
+	}
+	
+	function getDirection(pos, fruit) {
+		if(map.fruits[fruit].x > pos.x) return 2;
+		else if(map.fruits[fruit].x < pos.x) return 0;
+		else if(map.fruits[fruit].y > pos.y) return 3;
+		else if(map.fruits[fruit].y < pos.y) return 1;
+		else return 4;
+	}
+	
+	var nextFruit = -1;
+	for(var i = 0; i < map.fruits.length; i++) {
+		if(!map.fruits[i].taken) {
+			nextFruit = i;
+			break;
+		}
 	}
 	
 	var initial = new State();
-	initial.positions[0] = new Pos(get_my_x(), get_my_y());
-	initial.positions[1] = new Pos(get_opponent_x(), get_opponent_y());
-	var lastMove = 0;
-	
-	for(var i = 0; i < 2 * MAX_DEPTH; i++) path[i] = 4;
+	initial.pos[0] = {x: get_my_x(), y: get_my_y()};
+	initial.pos[1] = {x: get_opponent_x(), y: get_opponent_y()};
 	for(var i = MIN_DEPTH; i < MAX_DEPTH && !(new Date().getTime() - startTime > TIMEOUT_MSEC); i++) {
+		guessed = false;
+		initial.targets[0] = -1;
+		initial.targets[1] = -1;
+		
 		curDepth = 2 * i;
 		var res = minimax(initial, 0, -Number.MAX_VALUE, Number.MAX_VALUE, 0);
-		if(res == Number.MAX_VALUE) return PERMUTE[path[0]];
-		else if(res == -Number.MAX_VALUE) break;
-		lastMove = path[0];
+		//console.log(i);
 		
-		for(var j = 0; j < curDepth; j++) killPath[j] = path[j];
+		if(res.alpha == -Number.MAX_VALUE) break;
+		nextFruit = res.path[0];
+		killer = res.path.slice(0);
+		if(res.alpha == Number.MAX_VALUE || !guessed) break;
 	}
-	//console.log(new Date().getTime() - startTime);
-	for(var i = 0; i < curDepth - 2; i++) killPath[i] = killPath[i + 2];
-	for(var i = curDepth - 2; i < MAX_DEPTH * 2; i++) killPath[i] = 4;
-	return PERMUTE[lastMove];
+	//console.log("Target: ", nextFruit);
+	retain = [];
+	for(var i = 2; i < killer.length; i++) {
+		if(killer[i] == undefined) retain[i - 2] = {x: 0, y: 0}
+		else retain[i - 2] = {x: map.fruits[killer[i]].x, y: map.fruits[killer[i]].y};
+	}
+	return PERMUTE[getDirection(initial.pos[0], nextFruit)];
 }
 
-//TODO: brute force all pairwise paths for low fruit-counts
 //TODO: Better evaluation (need some played games first)
 //TODO: Optimization
-//TODO: alpha-beta with fruit vertices rather than squares (partial walks included)
