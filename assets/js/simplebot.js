@@ -1,6 +1,17 @@
 // this is your opponent in the real-time player to use for debugging 
-
+var c = 0;
 var SimpleBot = {
+	makeMove2: function() {
+		var trail =
+			[NORTH, TAKE, WEST, SOUTH, TAKE, WEST, SOUTH, TAKE, WEST,
+			WEST, WEST, WEST, SOUTH, SOUTH, TAKE, SOUTH, TAKE, EAST,
+			EAST, SOUTH, SOUTH, SOUTH, SOUTH, TAKE, EAST, NORTH, 
+			NORTH, NORTH, SOUTH, SOUTH, SOUTH, TAKE, EAST, EAST,
+			SOUTH, TAKE, WEST, WEST, WEST, WEST, NORTH, EAST, EAST,
+			EAST, NORTH, TAKE, EAST, EAST, SOUTH, TAKE, EAST, EAST,
+			EAST, EAST, TAKE, SOUTH, TAKE];
+		return trail[c++];
+	},
     makeMove: function() {
        // to disable to opponent, uncomment the next line
        // return PASS;

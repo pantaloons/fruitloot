@@ -1,10 +1,96 @@
+Array.prototype.transpose = function() {
+ 
+  // Calculate the width and height of the Array
+  var a = this,
+    w = a.length ? a.length : 0,
+    h = a[0] instanceof Array ? a[0].length : 0;
+ 
+  // In case it is a zero matrix, no transpose routine needed.
+  if(h === 0 || w === 0) { return []; }
+ 
+  /**
+   * @var {Number} i Counter
+   * @var {Number} j Counter
+   * @var {Array} t Transposed data is stored in this array.
+   */
+  var i, j, t = [];
+ 
+  // Loop through every item in the outer array (height)
+  for(i=0; i<h; i++) {
+ 
+    // Insert a new row (array)
+    t[i] = [];
+ 
+    // Loop through every item per item in outer array (width)
+    for(j=0; j<w; j++) {
+ 
+      // Save transposed data.
+      t[i][j] = a[j][i];
+    }
+  }
+ 
+  return t;
+};
+
 var Board = {
-    init: function() {
+	init3: function() {
+		HEIGHT = 6;
+		WIDTH = 6;
+		
+		Board.board =
+			[[0, 0, 0, 0, 0, 0],
+			 [0, 0, 0, 0, 0, 0],
+			 [0, 0, 0, 0, 0, 0],
+			 [0, 0, 0, 0, 0, 0],
+			 [0, 0, 3, 0, 0, 0],
+			 [0, 3, 0, 0, 2, 0]];
+			
+		Board.numberOfItemTypes = 3;
+		Board.totalItems = [1, 3, 5];
+		Board.myBotCollected = [1, 1, 1];
+		Board.simpleBotCollected = [0, 1, 2];
+        Board.myX = 3;
+        Board.myY = 2;
+        Board.oppX = 5;
+        Board.oppY = 4;
+        Board.initial_state = {};
+        jQuery.extend(true, Board.initial_state, Board);
+	},
+	init: function() {
+		
+			
+		HEIGHT = 5;
+		WIDTH = 5;
+		
+		Board.board =
+			[[4,0,3,0,0],
+			[0,4,0,3,0],
+			[0,0,0,4,4],
+			[0,0,0,0,4],
+			[3,0,0,3,0]].transpose();
+			
+			
+		Board.numberOfItemTypes = 4;
+		Board.totalItems = [1,3,5,7];
+		Board.myBotCollected = [1.0,1.5,0.0,1.0];
+		Board.simpleBotCollected = [0.0,1.5,1.0,1.0];
+        Board.myX = 3;
+        Board.myY = 2;
+        Board.oppX = 3;
+        Board.oppY = 2;
+        Board.initial_state = {};
+        jQuery.extend(true, Board.initial_state, Board);
+	},
+    init2: function() {
         var fullBoard;
 
         // initialize board
         HEIGHT = Math.min(Math.floor(Math.random() * 11) + 5, 15);
         WIDTH = Math.min(Math.floor(Math.random() * 11) + 5, 15);
+        
+        //HEIGHT = 5;
+        //WIDTH = 5;
+        
         Board.board = new Array(WIDTH);
 
         for (var i=0; i<WIDTH; i++) {
