@@ -1,1 +1,3 @@
 Alpha beta bot for Scribd robot fruit hunt challenge.
+
+Mybot 1 uses the board as a search space, but mybot2 uses the graph of fruit nodes which should be faster.
